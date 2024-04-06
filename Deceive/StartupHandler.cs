@@ -1,3 +1,6 @@
+using Deceive.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -11,6 +14,7 @@ namespace Deceive;
 internal static class StartupHandler
 {
     public static string DeceiveTitle => "Deceive " + Utils.DeceiveVersion;
+    public static IServiceProvider? ServiceProvider { get; private set; }
 
     // Arguments are parsed through System.CommandLine.DragonFruit.
     /// <param name="args">The game to be launched, or automatically determined if not passed.</param>
@@ -24,6 +28,9 @@ internal static class StartupHandler
         Application.EnableVisualStyles();
         try
         {
+            var host = CreateHostBuilder().Build();
+            ServiceProvider = host.Services;
+
             await StartDeceiveAsync(args, gamePatchline, riotClientParams, gameParams);
         }
         catch (Exception ex)
@@ -39,6 +46,17 @@ internal static class StartupHandler
                 MessageBoxDefaultButton.Button1
             );
         }
+    }
+
+    static IHostBuilder CreateHostBuilder()
+    {
+        return Host.CreateDefaultBuilder()
+            .ConfigureServices((context, services) =>
+            {
+                services.AddSingleton(sp => sp);
+                services.AddSingleton(sp => new MainController(sp.GetRequiredService<IServiceProvider>()));
+                services.AddCommands();
+            });
     }
 
     /// Actual main function. Wrapped into a separate function so we can catch exceptions.
@@ -149,7 +167,7 @@ internal static class StartupHandler
             ListenToRiotClientExit(riotClient);
         }
 
-        var mainController = new MainController();
+        var mainController = ServiceProvider!.GetRequiredService<MainController>();
 
         // Step 5: Get chat server and port for this player by listening to event from ConfigProxy.
         var servingClients = false;
@@ -161,11 +179,11 @@ internal static class StartupHandler
             if (servingClients)
                 return;
             servingClients = true;
-            mainController.StartServingClients(listener, args.ChatHost, args.ChatPort);
+            mainController!.StartServingClients(listener, args.ChatHost!, args.ChatPort);
         };
 
         // Loop infinitely and handle window messages/tray icon.
-        Application.Run(mainController);
+        Application.Run(mainController!);
     }
 
     private static void CurrentDomainOnUnhandledException(object sender, UnhandledExceptionEventArgs e)

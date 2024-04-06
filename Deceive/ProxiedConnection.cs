@@ -47,7 +47,7 @@ internal class ProxiedConnection
 
             do
             {
-                byteCount = await Incoming.ReadAsync(bytes, 0, bytes.Length);
+                byteCount = await Incoming.ReadAsync(bytes);
 
                 var content = Encoding.UTF8.GetString(bytes, 0, byteCount);
 
@@ -66,7 +66,7 @@ internal class ProxiedConnection
                 }
                 else
                 {
-                    await Outgoing.WriteAsync(bytes, 0, byteCount);
+                    await Outgoing.WriteAsync(bytes.AsMemory(0, byteCount));
                     Trace.WriteLine("<!--RC TO SERVER-->" + content);
                 }
 
@@ -95,7 +95,7 @@ internal class ProxiedConnection
 
             do
             {
-                byteCount = await Outgoing.ReadAsync(bytes, 0, bytes.Length);
+                byteCount = await Outgoing.ReadAsync(bytes);
                 var content = Encoding.UTF8.GetString(bytes, 0, byteCount);
 
                 // Insert fake player into roster
@@ -113,12 +113,12 @@ internal class ProxiedConnection
                         "<platforms><riot name='Deceive Active' tagline='...'/></platforms>" +
                         "</item>");
                     var contentBytes = Encoding.UTF8.GetBytes(content);
-                    await Incoming.WriteAsync(contentBytes, 0, contentBytes.Length);
+                    await Incoming.WriteAsync(contentBytes);
                     Trace.WriteLine("<!--DECEIVE TO RC-->" + content);
                 }
                 else
                 {
-                    await Incoming.WriteAsync(bytes, 0, byteCount);
+                    await Incoming.WriteAsync(bytes.AsMemory(0, byteCount));
                     Trace.WriteLine("<!--SERVER TO RC-->" + content);
                 }
             } while (byteCount != 0 && Connected);
@@ -250,7 +250,7 @@ internal class ProxiedConnection
             "</presence>";
 
         var bytes = Encoding.UTF8.GetBytes(presenceMessage);
-        await Incoming.WriteAsync(bytes, 0, bytes.Length);
+        await Incoming.WriteAsync(bytes);
         Trace.WriteLine("<!--DECEIVE TO RC-->" + presenceMessage);
     }
 
@@ -265,7 +265,7 @@ internal class ProxiedConnection
             $"<message from='41c322a1-b328-495b-a004-5ccd3e45eae8@eu1.pvp.net/RC-Deceive' stamp='{stamp}' id='fake-{stamp}' type='chat'><body>{message}</body></message>";
 
         var bytes = Encoding.UTF8.GetBytes(chatMessage);
-        await Incoming.WriteAsync(bytes, 0, bytes.Length);
+        await Incoming.WriteAsync(bytes);
         Trace.WriteLine("<!--DECEIVE TO RC-->" + chatMessage);
     }
 

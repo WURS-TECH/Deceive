@@ -82,9 +82,10 @@ internal static class Utils
         }
     }
 
-    private static IEnumerable<Process> GetProcesses()
+    private static List<Process> GetProcesses()
     {
-        var riotCandidates = Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName).Where(process => process.Id != Process.GetCurrentProcess().Id).ToList();
+        var currentProcess = Process.GetCurrentProcess();
+        var riotCandidates = Process.GetProcessesByName(currentProcess.ProcessName).Where(process => process.Id != currentProcess.Id).ToList();
         riotCandidates.AddRange(Process.GetProcessesByName("LeagueClient"));
         riotCandidates.AddRange(Process.GetProcessesByName("LoR"));
         riotCandidates.AddRange(Process.GetProcessesByName("VALORANT-Win64-Shipping"));
@@ -93,10 +94,10 @@ internal static class Utils
     }
 
     // Return the currently running Riot Client process, or null if none are running.
-    public static Process GetRiotClientProcess() => Process.GetProcessesByName("RiotClientServices").FirstOrDefault();
+    public static Process? GetRiotClientProcess() => Process.GetProcessesByName("RiotClientServices").FirstOrDefault();
 
     // Checks if there is a running LCU/LoR/VALORANT/RC or Deceive instance.
-    public static bool IsClientRunning() => GetProcesses().Any();
+    public static bool IsClientRunning() => GetProcesses().Count != 0;
 
     // Kills the running LCU/LoR/VALORANT/RC or Deceive instance, if applicable.
     public static void KillProcesses()
@@ -135,5 +136,11 @@ internal static class Utils
         {
             return null;
         }
+    }
+
+    public static async Task SendMessageFromFakePlayerAsync(string message, List<ProxiedConnection> connections)
+    {
+        foreach (var connection in connections)
+            await connection.SendMessageFromFakePlayerAsync(message);
     }
 }

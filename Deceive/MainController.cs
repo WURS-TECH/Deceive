@@ -1,3 +1,7 @@
+using Deceive.Commands;
+using Deceive.Enums;
+using Deceive.Properties;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,16 +12,15 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Xml;
-using System.Xml.Linq;
-using Deceive.Properties;
 
 namespace Deceive;
 
 internal class MainController : ApplicationContext
 {
-    internal MainController()
+    private readonly IServiceProvider _serviceProvider;
+    internal MainController(IServiceProvider serviceProvider)
     {
+        _serviceProvider = serviceProvider;
         TrayIcon = new NotifyIcon
         {
             Icon = Resources.DeceiveIcon,
@@ -39,12 +42,12 @@ internal class MainController : ApplicationContext
     private bool SentIntroductionText { get; set; } = false;
     private CancellationTokenSource? ShutdownToken { get; set; } = null;
 
-    private ToolStripMenuItem EnabledMenuItem { get; set; } = null!;
-    private ToolStripMenuItem ChatStatus { get; set; } = null!;
-    private ToolStripMenuItem OfflineStatus { get; set; } = null!;
-    private ToolStripMenuItem MobileStatus { get; set; } = null!;
+    public ToolStripMenuItem EnabledMenuItem { get; private set; } = null!;
+    public ToolStripMenuItem ChatStatus { get; private set; } = null!;
+    public ToolStripMenuItem OfflineStatus { get; private set; } = null!;
+    public ToolStripMenuItem MobileStatus { get; private set; } = null!;
 
-    private List<ProxiedConnection> Connections { get; } = new();
+    public List<ProxiedConnection> Connections { get; } = [];
 
     public void StartServingClients(TcpListener server, string chatHost, int chatPort)
     {
@@ -118,7 +121,8 @@ internal class MainController : ApplicationContext
                         await SendIntroductionTextAsync();
                     });
                 }
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 Trace.WriteLine("Failed to handle incoming connection.");
                 Trace.WriteLine(e);
@@ -227,50 +231,29 @@ internal class MainController : ApplicationContext
 
     public async Task HandleChatMessage(string content)
     {
-        if (content.ToLower().Contains("offline"))
+        var commandInvoker = content switch
         {
-            if (!Enabled)
-                await SendMessageFromFakePlayerAsync("Deceive is now enabled.");
-            OfflineStatus.PerformClick();
-        }
-        else if (content.ToLower().Contains("mobile"))
-        {
-            if (!Enabled)
-                await SendMessageFromFakePlayerAsync("Deceive is now enabled.");
-            MobileStatus.PerformClick();
-        }
-        else if (content.ToLower().Contains("online"))
-        {
-            if (!Enabled)
-                await SendMessageFromFakePlayerAsync("Deceive is now enabled.");
-            ChatStatus.PerformClick();
-        }
-        else if (content.ToLower().Contains("enable"))
-        {
-            if (Enabled)
-                await SendMessageFromFakePlayerAsync("Deceive is already enabled.");
-            else
-                EnabledMenuItem.PerformClick();
-        }
-        else if (content.ToLower().Contains("disable"))
-        {
-            if (!Enabled)
-                await SendMessageFromFakePlayerAsync("Deceive is already disabled.");
-            else
-                EnabledMenuItem.PerformClick();
-        }
-        else if (content.ToLower().Contains("status"))
-        {
-            if (Status == "chat")
-                await SendMessageFromFakePlayerAsync("You are appearing online.");
-            else
-                await SendMessageFromFakePlayerAsync("You are appearing " + Status + ".");
-        }
-        else if (content.ToLower().Contains("help"))
-        {
-            await SendMessageFromFakePlayerAsync("You can send the following messages to quickly change Deceive settings: online/offline/mobile/enable/disable/status");
-        }
+            string offline when CheckCommand(offline, DecieveChatCommand.Offline) => CreateCommandInvoker<OfflineCommand>(),
+            string mobile when CheckCommand(mobile, DecieveChatCommand.Mobile) => CreateCommandInvoker<MobileCommand>(),
+            string online when CheckCommand(online, DecieveChatCommand.Online) => CreateCommandInvoker<OnlineCommand>(),
+            string enable when CheckCommand(enable, DecieveChatCommand.Enable) => CreateCommandInvoker<EnableCommand>(),
+            string disable when CheckCommand(disable, DecieveChatCommand.Disable) => CreateCommandInvoker<DisableCommand>(),
+            string status when CheckCommand(status, DecieveChatCommand.Status) => CreateCommandInvoker<StatusCommand>(),
+            string help when CheckCommand(help, DecieveChatCommand.Help) => CreateCommandInvoker<HelpCommand>(),
+            _ => null
+        };
+
+        if (commandInvoker is null) return;
+
+        await commandInvoker.ExecuteAsync();
     }
+
+    private CommandInvoker CreateCommandInvoker<T>() where T : ICommand
+    {
+        return new(_serviceProvider.GetRequiredService<T>());
+    }
+
+    private static bool CheckCommand(string content, DecieveChatCommand type) => content.Contains(type.ToString(), StringComparison.OrdinalIgnoreCase);
 
     private async Task SendIntroductionTextAsync()
     {
@@ -286,11 +269,7 @@ internal class MainController : ApplicationContext
         await SendMessageFromFakePlayerAsync("Have fun!");
     }
 
-    private async Task SendMessageFromFakePlayerAsync(string message)
-    {
-        foreach (var connection in Connections)
-            await connection.SendMessageFromFakePlayerAsync(message);
-    }
+    private async Task SendMessageFromFakePlayerAsync(string message) => await Utils.SendMessageFromFakePlayerAsync(message, Connections);
 
     private async Task UpdateStatusAsync(string newStatus)
     {
@@ -313,8 +292,8 @@ internal class MainController : ApplicationContext
 
     private async Task ShutdownIfNoReconnect()
     {
-        if (ShutdownToken == null)
-            ShutdownToken = new CancellationTokenSource();
+        ShutdownToken ??= new CancellationTokenSource();
+
         await Task.Delay(60_000, ShutdownToken.Token);
 
         Trace.WriteLine("Received no new connections after 60s, shutting down.");
