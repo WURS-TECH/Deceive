@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -48,7 +49,7 @@ internal static class StartupHandler
         }
     }
 
-    static IHostBuilder CreateHostBuilder()
+    private static IHostBuilder CreateHostBuilder()
     {
         return Host.CreateDefaultBuilder()
             .ConfigureServices((context, services) =>
@@ -64,45 +65,14 @@ internal static class StartupHandler
     {
         // Refuse to do anything if the client is already running, unless we're specifically
         // allowing that through League/RC's --allow-multiple-clients.
-        if (Utils.IsClientRunning() && !(riotClientParams?.Contains("allow-multiple-clients") ?? false))
-        {
-            var result = MessageBox.Show(
-                "The Riot Client is currently running. In order to mask your online status, the Riot Client needs to be started by Deceive. " +
-                "Do you want Deceive to stop the Riot Client and games launched by it, so that it can restart with the proper configuration?",
-                DeceiveTitle,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button1
-            );
+        await KillRiotClientIfNeeded(riotClientParams);
 
-            if (result is not DialogResult.Yes)
-                return;
-            Utils.KillProcesses();
-            await Task.Delay(2000); // Riot Client takes a while to die
-        }
-
-        try
-        {
-            File.WriteAllText(Path.Combine(Persistence.DataDir, "debug.log"), string.Empty);
-            Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(Persistence.DataDir, "debug.log")));
-            Debug.AutoFlush = true;
-            Trace.WriteLine(DeceiveTitle);
-        }
-        catch
-        {
-            // ignored; just don't save logs if file is already being accessed
-        }
+        ManageDebugLog();
 
         // Step 0: Check for updates in the background.
         _ = Utils.CheckForUpdatesAsync();
 
-        // Step 1: Open a port for our chat proxy, so we can patch chat port into clientconfig.
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        Trace.WriteLine($"Chat proxy listening on port {port}");
-
-        // Step 2: Find the Riot Client.
+        // Step 1: Find the Riot Client.
         var riotClientPath = Utils.GetRiotClientPath();
 
         // If the riot client doesn't exist, the user is either severely outdated or has a bugged install.
@@ -120,6 +90,9 @@ internal static class StartupHandler
             return;
         }
 
+        // Step 2: Open a port for our chat proxy, so we can patch chat port into clientconfig.
+        var (listener, port) = ConfigureChatPort();
+
         // If launching "auto", use the persisted launch game (which defaults to prompt).
         if (game is LaunchGame.Auto)
             game = Persistence.GetDefaultLaunchGame();
@@ -135,14 +108,7 @@ internal static class StartupHandler
         if (game is LaunchGame.Prompt or LaunchGame.Auto)
             return;
 
-        var launchProduct = game switch
-        {
-            LaunchGame.LoL => "league_of_legends",
-            LaunchGame.LoR => "bacon",
-            LaunchGame.VALORANT => "valorant",
-            LaunchGame.RiotClient => null,
-            var x => throw new Exception("Unexpected LaunchGame: " + x)
-        };
+        var launchProduct = GetLaunchProduct(game);
 
         // Step 3: Start proxy web server for clientconfig
         var proxyServer = new ConfigProxy(port);
@@ -150,14 +116,7 @@ internal static class StartupHandler
         // Step 4: Launch Riot Client (+game)
         var startArgs = new ProcessStartInfo { FileName = riotClientPath, Arguments = $"--client-config-url=\"http://127.0.0.1:{proxyServer.ConfigPort}\"" };
 
-        if (launchProduct is not null)
-            startArgs.Arguments += $" --launch-product={launchProduct} --launch-patchline={gamePatchline}";
-
-        if (riotClientParams is not null)
-            startArgs.Arguments += $" {riotClientParams}";
-
-        if (gameParams is not null)
-            startArgs.Arguments += $" -- {gameParams}";
+        startArgs.Arguments += GetApplicationArguments(launchProduct!, riotClientParams!, gameParams!, gamePatchline);
 
         Trace.WriteLine($"About to launch Riot Client with parameters:\n{startArgs.Arguments}");
         var riotClient = Process.Start(startArgs);
@@ -184,6 +143,80 @@ internal static class StartupHandler
 
         // Loop infinitely and handle window messages/tray icon.
         Application.Run(mainController!);
+    }
+
+    private static string GetApplicationArguments(string launchProduct, string riotClientParams, string gameParams, string gamePatchline)
+    {
+        StringBuilder strBuilder = new();
+
+        if (launchProduct is not null)
+            strBuilder.Append($" --launch-product={launchProduct} --launch-patchline={gamePatchline}");
+
+        if (riotClientParams is not null)
+            strBuilder.Append($" {riotClientParams}");
+
+        if (gameParams is not null)
+            strBuilder.Append($" -- {gameParams}");
+
+        return strBuilder.ToString();
+    }
+
+    private static string GetLaunchProduct(LaunchGame game)
+    {
+
+        return game switch
+        {
+            LaunchGame.LoL => "league_of_legends",
+            LaunchGame.LoR => "bacon",
+            LaunchGame.VALORANT => "valorant",
+            LaunchGame.RiotClient => string.Empty,
+            var x => throw new Exception("Unexpected LaunchGame: " + x)
+        };
+    }
+
+    private async static Task KillRiotClientIfNeeded(string? riotClientParams)
+    {
+        if (Utils.IsClientRunning() && !(riotClientParams?.Contains("allow-multiple-clients") ?? false))
+        {
+            var result = MessageBox.Show(
+                "The Riot Client is currently running. In order to mask your online status, the Riot Client needs to be started by Deceive. " +
+                "Do you want Deceive to stop the Riot Client and games launched by it, so that it can restart with the proper configuration?",
+                DeceiveTitle,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1
+            );
+
+            if (result is not DialogResult.Yes)
+                return;
+            Utils.KillProcesses();
+            await Task.Delay(2000); // Riot Client takes a while to die // TODO: Try to listen that change.
+        }
+    }
+
+    private static (TcpListener, int) ConfigureChatPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        Trace.WriteLine($"Chat proxy listening on port {port}");
+
+        return (listener, port);
+    }
+
+    private static void ManageDebugLog()
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(Persistence.DataDir, "debug.log"), string.Empty);
+            Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(Persistence.DataDir, "debug.log")));
+            Debug.AutoFlush = true;
+            Trace.WriteLine(DeceiveTitle);
+        }
+        catch
+        {
+            // ignored; just don't save logs if file is already being accessed
+        }
     }
 
     private static void CurrentDomainOnUnhandledException(object sender, UnhandledExceptionEventArgs e)
