@@ -143,9 +143,7 @@ internal class ProxiedConnection
             var wrappedContent = "<xml>" + content + "</xml>";
             var xml = XDocument.Load(new StringReader(wrappedContent));
 
-            if (xml.Root is null)
-                return;
-            if (xml.Root.HasElements is false)
+            if (xml.Root is null || xml.Root.HasElements is false)
                 return;
 
             foreach (var presence in xml.Root.Elements())

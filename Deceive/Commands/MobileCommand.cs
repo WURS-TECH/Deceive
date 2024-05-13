@@ -6,7 +6,7 @@ internal class MobileCommand(MainController mainController) : Command(mainContro
     internal async override Task ExecuteAsync()
     {
         if (!_mainController.Enabled)
-            await SendMessageFromFakePlayerAsync("Deceive is now enabled.");
+            await Utils.SendMessageFromFakePlayerAsync("Deceive is now enabled.", _mainController.Connections);
         _mainController.MobileStatus.PerformClick();
     }
 }

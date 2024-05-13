@@ -6,8 +6,8 @@ internal class StatusCommand(MainController mainController) : Command(mainContro
     internal async override Task ExecuteAsync()
     {
         if (_mainController.Status == "chat")
-            await SendMessageFromFakePlayerAsync("You are appearing online.");
+            await Utils.SendMessageFromFakePlayerAsync("You are appearing online.", _mainController.Connections);
         else
-            await SendMessageFromFakePlayerAsync("You are appearing " + _mainController.Status + ".");
+            await Utils.SendMessageFromFakePlayerAsync($"You are appearing {_mainController.Status}.", _mainController.Connections);
     }
 }

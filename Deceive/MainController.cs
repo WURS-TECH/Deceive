@@ -1,5 +1,6 @@
 using Deceive.Commands;
 using Deceive.Enums;
+using Deceive.Extensions;
 using Deceive.Properties;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -229,31 +230,28 @@ internal class MainController : ApplicationContext
 #endif
     }
 
-    public async Task HandleChatMessage(string content)
+    public async Task HandleChatMessage(string inputContent)
     {
-        var commandInvoker = content switch
+        var command = CreateCommand(inputContent);
+
+        if (command is not null)
+            await command.ExecuteAsync();
+    }
+
+    private ICommand? CreateCommand(string inputContent)
+    {
+        return inputContent switch
         {
-            string offline when CheckCommand(offline, DecieveChatCommand.Offline) => CreateCommandInvoker<OfflineCommand>(),
-            string mobile when CheckCommand(mobile, DecieveChatCommand.Mobile) => CreateCommandInvoker<MobileCommand>(),
-            string online when CheckCommand(online, DecieveChatCommand.Online) => CreateCommandInvoker<OnlineCommand>(),
-            string enable when CheckCommand(enable, DecieveChatCommand.Enable) => CreateCommandInvoker<EnableCommand>(),
-            string disable when CheckCommand(disable, DecieveChatCommand.Disable) => CreateCommandInvoker<DisableCommand>(),
-            string status when CheckCommand(status, DecieveChatCommand.Status) => CreateCommandInvoker<StatusCommand>(),
-            string help when CheckCommand(help, DecieveChatCommand.Help) => CreateCommandInvoker<HelpCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Offline) => _serviceProvider.GetService<OfflineCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Mobile) => _serviceProvider.GetService<MobileCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Online) => _serviceProvider.GetService<OnlineCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Enable) => _serviceProvider.GetService<EnableCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Disable) => _serviceProvider.GetService<DisableCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Status) => _serviceProvider.GetService<StatusCommand>(),
+            _ when inputContent.IsCommand(DecieveChatCommand.Help) => _serviceProvider.GetService<HelpCommand>(),
             _ => null
         };
-
-        if (commandInvoker is null) return;
-
-        await commandInvoker.ExecuteAsync();
     }
-
-    private CommandInvoker CreateCommandInvoker<T>() where T : ICommand
-    {
-        return new(_serviceProvider.GetRequiredService<T>());
-    }
-
-    private static bool CheckCommand(string content, DecieveChatCommand type) => content.Contains(type.ToString(), StringComparison.OrdinalIgnoreCase);
 
     private async Task SendIntroductionTextAsync()
     {
@@ -279,7 +277,7 @@ internal class MainController : ApplicationContext
         if (newStatus == "chat")
             await SendMessageFromFakePlayerAsync("You are now appearing online.");
         else
-            await SendMessageFromFakePlayerAsync("You are now appearing " + newStatus + ".");
+            await SendMessageFromFakePlayerAsync($"You are now appearing {newStatus}.");
     }
 
     private void LoadStatus()

@@ -6,7 +6,7 @@ internal class EnableCommand(MainController mainController) : Command(mainContro
     internal async override Task ExecuteAsync()
     {
         if (_mainController.Enabled)
-            await SendMessageFromFakePlayerAsync("Deceive is already enabled.");
+            await Utils.SendMessageFromFakePlayerAsync("Deceive is already enabled.", _mainController.Connections);
         else
             _mainController.EnabledMenuItem.PerformClick();
     }

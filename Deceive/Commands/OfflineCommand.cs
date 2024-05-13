@@ -6,7 +6,7 @@ internal class OfflineCommand(MainController mainController) : Command(mainContr
     internal async override Task ExecuteAsync()
     {
         if (!_mainController.Enabled)
-            await SendMessageFromFakePlayerAsync("Deceive is now enabled.");
+            await Utils.SendMessageFromFakePlayerAsync("Deceive is now enabled.", _mainController.Connections);
         _mainController.OfflineStatus.PerformClick();
     }
 }

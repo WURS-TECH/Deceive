@@ -11,6 +11,4 @@ internal abstract class Command(MainController mainController) : ICommand
     {
         await ExecuteAsync();
     }
-
-    protected async Task SendMessageFromFakePlayerAsync(string message) => await Utils.SendMessageFromFakePlayerAsync(message, _mainController.Connections);
 }
