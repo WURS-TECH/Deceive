@@ -5,6 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <AssemblyVersion>1.13.0.0</AssemblyVersion>
+	<VersionSuffix>Wurs-Tech</VersionSuffix>
     <ApplicationIcon>Resources\deceive.ico</ApplicationIcon>
     <LangVersion>default</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
